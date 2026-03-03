@@ -2,6 +2,10 @@
 
 A hook for monitoring token usage per cycle in Strands agents, with detailed cache tracking, cost calculation, and savings analysis.
 
+**Supported Models:**
+- ✅ **All Bedrock models** - Input/output token tracking ([AWS: TokenUsage](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html))
+- ✅ **Claude & Nova only** - Cache tracking (read/write) and savings analysis ([AWS: Supported models](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-models))
+
 ## Installation
 
 ```python
@@ -85,28 +89,67 @@ Cycle 2: Creates cache       → Cache Read: 0, Cache Write: 3532
 Cycle 3: Uses cache          → Cache Read: 3532, Cache Write: 118
 ```
 
+### What Gets Cached
+
+```
+Cycle 1: [System Prompt + User1] → Assistant1
+         └─> Cache Write: 0 (nothing to cache yet)
+
+Cycle 2: [System Prompt + User1 + Ass1 + User2] → Assistant2
+         └─> Cache Write: 3532 (caches prefix: System + User1 + Ass1)
+
+Cycle 3: [System Prompt + User1 + Ass1 + User2 + Ass2 + User3] → Assistant3
+         └─> Cache Read: 3532 (reuses cached prefix)
+         └─> Cache Write: 118 (caches new context: User2 + Ass2)
+```
+
+**How it works:**
+- Bedrock waits until there's a meaningful conversation prefix before caching (typically after first exchange)
+- Once cached, the prefix (system prompt + early conversation) is reused at 90% discount
+- New turns get incrementally added to the cache for future requests
+
+### What Content Is Cached (Claude Models)
+
+With `CacheConfig(strategy="auto")`, Bedrock automatically caches the following content:
+
+1. **System Prompt** - Your agent's instructions (~200 tokens)
+
+2. **Tool Definitions** - All tool schemas in JSON format (~3000+ tokens)
+   - Example: `calculator`, `temperature_converter`, `shell`, `editor`
+   - Tool schemas are verbose and make up the bulk of initial cache writes
+
+3. **Conversation History** - Previous user and assistant messages
+
+4. **Cache Points** - Automatically placed after each assistant message
+   - [Strands: Auto cache strategy](https://strandsagents.com/latest/documentation/docs/user-guide/concepts/model-providers/amazon-bedrock/#messages-caching/)
+
+
+**Why Cycle 2 cache write is large (3575 tokens):**
+- System prompt: ~200 tokens
+- 4 tool definitions: ~3000 tokens (tools have extensive JSON schemas)
+- First exchange: ~375 tokens
+- **Total: ~3575 tokens**
+
+**Important Notes:**
+- ✅ **Claude models:** Support caching of system, tools, and messages
+- ❌ **Amazon Nova:** Does not support tool caching ([Nova limitations](https://github.com/strands-agents/sdk-python/issues/449))
+
 ### Key Points
 
-- **Cache Write** = INPUT tokens being cached (not output)
-- **Cache Read** = INPUT tokens retrieved from cache
-- **TTL**: 5 minutes default (resets on each use)
+- **Cache Write** = INPUT tokens being cached (not output) ([AWS docs](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html))
+- **Cache Read** = INPUT tokens retrieved from cache ([AWS docs](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html))
+- **TTL**: 5 minutes default, 1 hour available for Claude 4.5 models ([AWS announcement](https://aws.amazon.com/about-aws/whats-new/2026/01/amazon-bedrock-one-hour-duration-prompt-caching/))
 - **Cache persists** across agent restarts within TTL
 - **First call**: No cache benefits (setup phase)
 - **Subsequent calls**: Cost savings on cached input
-
-### Bedrock Caching Thresholds
-
 - **Minimum tokens to cache**: ~1024 tokens (Bedrock won't cache smaller prefixes)
-- **Maximum cached tokens**:
-  - Claude models: 32,000 tokens
-  - Nova models: 20,000 tokens
 - **Maximum checkpoints**: 4 cache checkpoints per conversation
 
 ### Token Accounting: How Input Tokens and Cache Tokens Relate
 
 **Critical Fact:** `inputTokens` **excludes** `cacheReadInputTokens`. They are separate, non-overlapping fields in the AWS Bedrock response.
 
-#### Proof: Identical Workload With vs. Without Caching
+#### Identical Workload With vs. Without Caching
 
 **Run 1 - WITH Caching (`cache_config=CacheConfig(strategy="auto")`):**
 ```
@@ -206,8 +249,6 @@ Run 1: Cost + Savings = $0.036030 + $0.029832 = $0.065862
 Run 2: Cost = $0.062781
 Difference: $0.003 (within expected variance)
 ```
-
-This confirms our cost calculation is correct - we add all token types without double-counting.
 
 ### Cache Invalidation
 
