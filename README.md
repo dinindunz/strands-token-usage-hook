@@ -109,25 +109,38 @@ The final answer is **1468.9°C**
 
 ## Cache Behavior
 
+As per our cycle definition: **Cycle = BeforeModelCall → Model Call → AfterModelCall**
+
+Each completed cycle includes both the user input AND the assistant's response.
+
 ```
-Cycle 1: [System Prompt + Tools + User1] → Assistant1
-    └─> Cache Write: 0 (nothing to cache yet)
+After Cycle 1 completes:
+  - Full context: [System Prompt + Tools + User1 + Asst1]
+  - Cache Read: 0, Cache Write: 0
+  - No caching yet - Bedrock waits for meaningful prefix
 
-Cycle 2: Cache Read: 0, Cache Write: 3574
-    └─> Writing to cache: [System Prompt + Tools + User1 + Asst1]
-        (nothing to read yet, first cache creation)
+After Cycle 2 completes:
+  - Full context: [System Prompt + Tools + User1 + Asst1 + User2 + Asst2]
+  - Cache Read: 0, Cache Write: 3574
+  - Writing to cache: [System Prompt + Tools + User1 + Asst1] = 3574 tokens
 
-  Cycle 3: Cache Read: 3574, Cache Write: 118
-    └─> Reading from cache: [System Prompt + Tools + User1 + Asst1] = 3574 tokens
-    └─> Writing to cache: [User2 + Asst2] = 118 tokens (only the new exchange)
+After Cycle 3 completes:
+  - Full context: [System + Tools + User1 + Asst1 + User2 + Asst2 + User3 + Asst3]
+  - Cache Read: 3574, Cache Write: 118
+  - Reading from cache: [System + Tools + User1 + Asst1] = 3574 tokens
+  - Writing to cache: [User2 + Asst2] = 118 tokens (new exchange only)
 
-  Cycle 4: Cache Read: 3692, Cache Write: 88
-    └─> Reading from cache: [System + Tools + User1 + Asst1 + User2 + Asst2] = 3574 + 118 = 3692 tokens
-    └─> Writing to cache: [User3 + Asst3] = 88 tokens (only the new exchange)
+After Cycle 4 completes:
+  - Full context: [System + Tools + User1 + Asst1 + User2 + Asst2 + User3 + Asst3 + User4 + Asst4]
+  - Cache Read: 3692, Cache Write: 88
+  - Reading from cache: [System + Tools + User1 + Asst1 + User2 + Asst2] = 3574 + 118 = 3692 tokens
+  - Writing to cache: [User3 + Asst3] = 88 tokens (new exchange only)
 
-  Cycle 5: Cache Read: 3780, Cache Write: 123
-    └─> Reading from cache: [System + Tools + User1 + Asst1 + User2 + Asst2 + User3 + Asst3] = 3692 + 88 = 3780 tokens
-    └─> Writing to cache: [User4 + Asst4] = 123 tokens (only the new exchange)
+After Cycle 5 completes:
+  - Full context: [System + Tools + ... + User4 + Asst4 + User5 + Asst5]
+  - Cache Read: 3780, Cache Write: 123
+  - Reading from cache: [System + Tools + ... + User3 + Asst3] = 3692 + 88 = 3780 tokens
+  - Writing to cache: [User4 + Asst4] = 123 tokens (new exchange only)
 ```
 
 **How it works:**
