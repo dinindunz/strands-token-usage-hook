@@ -139,9 +139,9 @@ With `CacheConfig(strategy="auto")`, Bedrock automatically caches the following 
 - **Cache Write** = INPUT tokens being cached (not output) ([AWS docs](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html))
 - **Cache Read** = INPUT tokens retrieved from cache ([AWS docs](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html))
 - **TTL**: 5 minutes default, 1 hour available for Claude 4.5 models ([AWS announcement](https://aws.amazon.com/about-aws/whats-new/2026/01/amazon-bedrock-one-hour-duration-prompt-caching/))
-- **Cache persists** across agent restarts within TTL
+- **Cache scope**: Session-isolated - each agent restart creates a new session ID, preventing cache leakage between users/conversations ([Strands: Session Management](https://strandsagents.com/latest/documentation/docs/user-guide/concepts/agents/session-management/))
 - **First call**: No cache benefits (setup phase)
-- **Subsequent calls**: Cost savings on cached input
+- **Subsequent calls**: Cost savings on cached input within the same session
 - **Minimum tokens to cache**: ~1024 tokens (Bedrock won't cache smaller prefixes)
 - **Maximum checkpoints**: 4 cache checkpoints per conversation
 
@@ -253,10 +253,24 @@ Difference: $0.003 (within expected variance)
 ### Cache Invalidation
 
 Cache breaks when:
-- TTL expires
-- System prompt changes
-- Tool definitions change
-- Conversation manager trims old messages
+- **TTL expires** (5 minutes or 1 hour)
+- **System prompt changes**
+- **Tool definitions change**
+- **Conversation manager trims old messages**
+- **Agent restarts** - each restart creates a new session ID, isolating cache
+
+**To enable cache persistence across restarts:**
+```python
+from strands.session.file_session_manager import FileSessionManager
+
+session_manager = FileSessionManager(session_id="persistent-session-id")
+agent = Agent(
+    model=BedrockModel(...),
+    session_manager=session_manager,  # Reuse same session across restarts
+    ...
+)
+```
+([Strands: Session Persistence](https://dev.to/aws/til-strands-agents-has-built-in-session-persistence-3nhl))
 
 ## License
 
