@@ -50,23 +50,41 @@ AfterInvocation → Logs Cycle 3 usage (cycle_count=3)
 ## Output Example
 
 ```
-I'll help you with this step-by-step calculation.
+I'll help you with this calculation. Let me break it down:
+1. Add 2 + 5
+2. Treat the result as Celsius and convert to Fahrenheit
+3. Multiply that Fahrenheit value by 60
+4. Convert the result back to Celsius
 
-First, let me add 2 + 5:
+Let me start:
 Tool #1: calculator
-[Cycle 1] Input: 3459, Output: 82, Cache Read: 0, Cache Write: 0
+[Cycle 1]
+  Input: (tokens: 3459, cost: $0.010377), Output: (tokens: 124, cost: $0.001860)
+  FinalCost: $0.012237 (input_cost + output_cost)
 
-Now I'll convert 7°C to Fahrenheit:
+Now let me convert 7°C to Fahrenheit:
 Tool #2: temperature_converter
-[Cycle 2] Input: 22, Output: 105, Cache Read: 0, Cache Write: 3532
+[Cycle 2]
+  Input: (tokens: 22, cost: $0.000066), Output: (tokens: 105, cost: $0.001575)
+  CacheRead: (tokens: 0, cost: $0.000000), CacheWrite: (tokens: 3574, cost: $0.013402)
+  FinalCost: $0.015043 (input_cost + output_cost + cache_read_cost + cache_write_cost)
+  NetSavings: $-0.002680 (cache_read_benefit - cache_write_penalty)
 
-Now I'll multiply 44.6 by 60:
+Now let me multiply 44.6 by 60:
 Tool #3: calculator
-[Cycle 3] Input: 26, Output: 71, Cache Read: 3532, Cache Write: 118
+[Cycle 3]
+  Input: (tokens: 26, cost: $0.000078), Output: (tokens: 71, cost: $0.001065)
+  CacheRead: (tokens: 3574, cost: $0.001072), CacheWrite: (tokens: 118, cost: $0.000442)
+  FinalCost: $0.002658 (input_cost + output_cost + cache_read_cost + cache_write_cost)
+  NetSavings: $0.009561 (cache_read_benefit - cache_write_penalty)
 
-Finally, I'll convert 2676°F to Celsius:
+Finally, let me convert 2676°F to Celsius:
 Tool #4: temperature_converter
-[Cycle 4] Input: 25, Output: 107, Cache Read: 3650, Cache Write: 88
+[Cycle 4]
+  Input: (tokens: 25, cost: $0.000075), Output: (tokens: 107, cost: $0.001605)
+  CacheRead: (tokens: 3692, cost: $0.001108), CacheWrite: (tokens: 88, cost: $0.000330)
+  FinalCost: $0.003118 (input_cost + output_cost + cache_read_cost + cache_write_cost)
+  NetSavings: $0.009902 (cache_read_benefit - cache_write_penalty)
 
 **Results:**
 1. 2 + 5 = **7**
@@ -75,32 +93,41 @@ Tool #4: temperature_converter
 4. 2676°F = **1468.9°C**
 
 The final answer is **1468.9°C**
-[Cycle 5] Input: 27, Output: 82, Cache Read: 3738, Cache Write: 123
+[Cycle 5]
+  Input: (tokens: 27, cost: $0.000081), Output: (tokens: 82, cost: $0.001230)
+  CacheRead: (tokens: 3780, cost: $0.001134), CacheWrite: (tokens: 123, cost: $0.000461)
+  FinalCost: $0.002906 (input_cost + output_cost + cache_read_cost + cache_write_cost)
+  NetSavings: $0.010114 (cache_read_benefit - cache_write_penalty)
 
-[Total] Input: 3559, Output: 447, Total: 18787
-[Total Cache] Read: 10920, Write: 3861
+
+=== Final Summary ===
+[Total Tokens] Input: 3559, Output: 489
+[Total Cache] Read: 11046, Write: 3903
+[Total Cost] $0.035962
+[Total Net Savings] $0.026897
 ```
 
 ## Cache Behavior
 
 ```
-Cycle 1: No cache yet        → Cache Read: 0, Cache Write: 0
-Cycle 2: Creates cache       → Cache Read: 0, Cache Write: 3532
-Cycle 3: Uses cache          → Cache Read: 3532, Cache Write: 118
-```
+Cycle 1: [System Prompt + Tools + User1] → Assistant1
+    └─> Cache Write: 0 (nothing to cache yet)
 
-### What Gets Cached
+Cycle 2: Cache Read: 0, Cache Write: 3574
+    └─> Writing to cache: [System Prompt + Tools + User1 + Asst1]
+        (nothing to read yet, first cache creation)
 
-```
-Cycle 1: [System Prompt + User1] → Assistant1
-         └─> Cache Write: 0 (nothing to cache yet)
+  Cycle 3: Cache Read: 3574, Cache Write: 118
+    └─> Reading from cache: [System Prompt + Tools + User1 + Asst1] = 3574 tokens
+    └─> Writing to cache: [User2 + Asst2] = 118 tokens (only the new exchange)
 
-Cycle 2: [System Prompt + User1 + Ass1 + User2] → Assistant2
-         └─> Cache Write: 3532 (caches prefix: System + User1 + Ass1)
+  Cycle 4: Cache Read: 3692, Cache Write: 88
+    └─> Reading from cache: [System + Tools + User1 + Asst1 + User2 + Asst2] = 3574 + 118 = 3692 tokens
+    └─> Writing to cache: [User3 + Asst3] = 88 tokens (only the new exchange)
 
-Cycle 3: [System Prompt + User1 + Ass1 + User2 + Ass2 + User3] → Assistant3
-         └─> Cache Read: 3532 (reuses cached prefix)
-         └─> Cache Write: 118 (caches new context: User2 + Ass2)
+  Cycle 5: Cache Read: 3780, Cache Write: 123
+    └─> Reading from cache: [System + Tools + User1 + Asst1 + User2 + Asst2 + User3 + Asst3] = 3692 + 88 = 3780 tokens
+    └─> Writing to cache: [User4 + Asst4] = 123 tokens (only the new exchange)
 ```
 
 **How it works:**
@@ -149,92 +176,130 @@ With `CacheConfig(strategy="auto")`, Bedrock automatically caches the following 
 
 **Critical Fact:** `inputTokens` **excludes** `cacheReadInputTokens`. They are separate, non-overlapping fields in the AWS Bedrock response.
 
-#### Identical Workload With vs. Without Caching
+#### Identical Workload Without vs. With Caching
 
-**Run 1 - WITH Caching (`cache_config=CacheConfig(strategy="auto")`):**
+**Run 1 - WITHOUT Caching (cache_config disabled):**
 ```
 I'll help you with this calculation step by step.
 
 1. First, let me add 2 + 5
-2. Treat that result as Celsius and convert to Fahrenheit
+2. Then convert that result from Celsius to Fahrenheit
 3. Multiply that Fahrenheit value by 60
-4. Convert that result back to Celsius
-
-Let me start:
+4. Finally convert that result back to Celsius
 Tool #1: calculator
-[Cycle 1] Input: 3459, Output: 125, Cache Read: 0, Cache Write: 0, Cost: $0.012252
+[Cycle 1]
+  Input: (tokens: 3459, cost: $0.010377), Output: (tokens: 119, cost: $0.001785)
+  FinalCost: $0.012162 (input_cost + output_cost)
 
 Now let me convert 7°C to Fahrenheit:
 Tool #2: temperature_converter
-[Cycle 2] Input: 22, Output: 105, Cache Read: 0, Cache Write: 3575, Cost: $0.015047
+[Cycle 2]
+  Input: (tokens: 3591, cost: $0.010773), Output: (tokens: 105, cost: $0.001575)
+  FinalCost: $0.012348 (input_cost + output_cost)
 
 Now let me multiply 44.6 by 60:
 Tool #3: calculator
-[Cycle 3] Input: 26, Output: 71, Cache Read: 3575, Cache Write: 118, Cost: $0.002658, Saved: $0.009653
+[Cycle 3]
+  Input: (tokens: 3713, cost: $0.011139), Output: (tokens: 71, cost: $0.001065)
+  FinalCost: $0.012204 (input_cost + output_cost)
 
 Finally, let me convert 2676°F back to Celsius:
 Tool #4: temperature_converter
-[Cycle 4] Input: 25, Output: 108, Cache Read: 3693, Cache Write: 88, Cost: $0.003133, Saved: $0.009971
+[Cycle 4]
+  Input: (tokens: 3800, cost: $0.011400), Output: (tokens: 108, cost: $0.001620)
+  FinalCost: $0.013020 (input_cost + output_cost)
 
-**Summary of calculations:**
-1. 2 + 5 = **7**
-2. 7°C = **44.6°F**
-3. 44.6 × 60 = **2676**
-4. 2676°F = **1468.9°C**
+## Results:
+1. **2 + 5 = 7**
+2. **7°C = 44.6°F**
+3. **44.6 × 60 = 2676**
+4. **2676°F = 1468.9°C**
 
-**Final answer: 1468.9°C**
-[Cycle 5] Input: 27, Output: 84, Cache Read: 3781, Cache Write: 124, Cost: $0.002940, Saved: $0.010209
+The final answer is **1468.9°C**.
+[Cycle 5]
+  Input: (tokens: 3926, cost: $0.011778), Output: (tokens: 82, cost: $0.001230)
+  FinalCost: $0.013008 (input_cost + output_cost)
 
-[Total] Input: 3559, Output: 493, Total: 19006
-[Total Cache] Read: 11049, Write: 3905
-[Total Cost] $0.036030
-[Total Savings] $0.029832
+
+=== Final Summary ===
+[Total Tokens] Input: 18489, Output: 485
+[Total Cache] Read: 0, Write: 0
+[Total Cost] $0.062742
 ```
 
-**Run 2 - WITHOUT Caching (cache_config disabled):**
+**Run 2 - WITH Caching (`cache_config=CacheConfig(strategy="auto")`):**
 ```
-I'll help you with these calculations step by step.
-
-1. First, let me add 2 + 5
-2. Treat that result as Celsius and convert to Fahrenheit
+I'll help you with this calculation. Let me break it down:
+1. Add 2 + 5
+2. Treat the result as Celsius and convert to Fahrenheit
 3. Multiply that Fahrenheit value by 60
-4. Convert that result back to Celsius
+4. Convert the result back to Celsius
+
+Let me start:
 Tool #1: calculator
-[Cycle 1] Input: 3459, Output: 120, Cache Read: 0, Cache Write: 0, Cost: $0.012177
+[Cycle 1]
+  Input: (tokens: 3459, cost: $0.010377), Output: (tokens: 124, cost: $0.001860)
+  FinalCost: $0.012237 (input_cost + output_cost)
 
 Now let me convert 7°C to Fahrenheit:
 Tool #2: temperature_converter
-[Cycle 2] Input: 3592, Output: 105, Cache Read: 0, Cache Write: 0, Cost: $0.012351
+[Cycle 2]
+  Input: (tokens: 22, cost: $0.000066), Output: (tokens: 105, cost: $0.001575)
+  CacheRead: (tokens: 0, cost: $0.000000), CacheWrite: (tokens: 3574, cost: $0.013402)
+  FinalCost: $0.015043 (input_cost + output_cost + cache_read_cost + cache_write_cost)
+  NetSavings: $-0.002680 (cache_read_benefit - cache_write_penalty)
 
 Now let me multiply 44.6 by 60:
 Tool #3: calculator
-[Cycle 3] Input: 3714, Output: 71, Cache Read: 0, Cache Write: 0, Cost: $0.012207
+[Cycle 3]
+  Input: (tokens: 26, cost: $0.000078), Output: (tokens: 71, cost: $0.001065)
+  CacheRead: (tokens: 3574, cost: $0.001072), CacheWrite: (tokens: 118, cost: $0.000442)
+  FinalCost: $0.002658 (input_cost + output_cost + cache_read_cost + cache_write_cost)
+  NetSavings: $0.009561 (cache_read_benefit - cache_write_penalty)
 
 Finally, let me convert 2676°F to Celsius:
 Tool #4: temperature_converter
-[Cycle 4] Input: 3801, Output: 107, Cache Read: 0, Cache Write: 0, Cost: $0.013008
+[Cycle 4]
+  Input: (tokens: 25, cost: $0.000075), Output: (tokens: 107, cost: $0.001605)
+  CacheRead: (tokens: 3692, cost: $0.001108), CacheWrite: (tokens: 88, cost: $0.000330)
+  FinalCost: $0.003118 (input_cost + output_cost + cache_read_cost + cache_write_cost)
+  NetSavings: $0.009902 (cache_read_benefit - cache_write_penalty)
 
-**Summary of calculations:**
+**Results:**
 1. 2 + 5 = **7**
 2. 7°C = **44.6°F**
 3. 44.6 × 60 = **2676**
 4. 2676°F = **1468.9°C**
 
 The final answer is **1468.9°C**
-[Cycle 5] Input: 3926, Output: 84, Cache Read: 0, Cache Write: 0, Cost: $0.013038
+[Cycle 5]
+  Input: (tokens: 27, cost: $0.000081), Output: (tokens: 82, cost: $0.001230)
+  CacheRead: (tokens: 3780, cost: $0.001134), CacheWrite: (tokens: 123, cost: $0.000461)
+  FinalCost: $0.002906 (input_cost + output_cost + cache_read_cost + cache_write_cost)
+  NetSavings: $0.010114 (cache_read_benefit - cache_write_penalty)
 
-[Total] Input: 18492, Output: 487, Total: 18979
-[Total Cache] Read: 0, Write: 0
-[Total Cost] $0.062781
-[Total Savings] $0.000000
+
+=== Final Summary ===
+[Total Tokens] Input: 3559, Output: 489
+[Total Cache] Read: 11046, Write: 3903
+[Total Cost] $0.035962
+[Total Net Savings] $0.026897
 ```
 
 #### Analysis
 
+**Token verification:**
 ```
-Run 1: input + cache_read + cache_write = 3,559 + 11,049 + 3,905 = 18,513 tokens
-Run 2: input (no cache) = 18,492 tokens
-Difference: 21 tokens (≈0.1% - negligible rounding)
+Run 1: input (no cache) = 18,489 tokens
+Run 2: input + cache_read + cache_write = 3,559 + 11,046 + 3,903 = 18,508 tokens
+Difference: 19 tokens
+```
+
+**Cost verification:**
+```
+Run 1: Total Cost = $0.062742
+Run 2: Total Cost + Net Savings = $0.035962 + $0.026897 = $0.062859
+Difference: $0.00117 (given there is a token deviation of 19 tokens)
 ```
 
 **What this proves:**
@@ -242,13 +307,6 @@ Difference: 21 tokens (≈0.1% - negligible rounding)
 - **Cached tokens** are tracked separately in `cacheReadInputTokens`
 - Without caching, **all tokens** are processed as `inputTokens`
 - The token counts match: `input + cache_read + cache_write ≈ total input without cache`
-
-**Cost verification:**
-```
-Run 1: Cost + Savings = $0.036030 + $0.029832 = $0.065862
-Run 2: Cost = $0.062781
-Difference: $0.003 (within expected variance)
-```
 
 ### Cache Invalidation
 
@@ -271,6 +329,10 @@ agent = Agent(
 )
 ```
 ([Strands: Session Persistence](https://dev.to/aws/til-strands-agents-has-built-in-session-persistence-3nhl))
+
+## Resources
+
+- [Amazon Bedrock Prompt Caching - SimpleAWS Newsletter](https://newsletter.simpleaws.dev/p/amazon-bedrock-prompt-caching)
 
 ## License
 

@@ -42,10 +42,10 @@ def temperature_converter(value: float, from_unit: str, to_unit: str) -> str:
         return f"{value}°{from_unit}"
 
     if from_unit == "C" and to_unit == "F":
-        result = (value * 9/5) + 32
+        result = (value * 9 / 5) + 32
         return f"{result:.1f}°F"
     elif from_unit == "F" and to_unit == "C":
-        result = (value - 32) * 5/9
+        result = (value - 32) * 5 / 9
         return f"{result:.1f}°C"
     else:
         return f"Error: Invalid units. Use 'C' or 'F'"
